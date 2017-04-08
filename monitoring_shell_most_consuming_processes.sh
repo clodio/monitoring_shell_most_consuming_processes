@@ -1,15 +1,15 @@
-#/bin/bash
-
-# Monitor most consummming process for a period and output data in graphite or log
-
+﻿#!/bin/bash
+# Claude.seguret@laposte.fr
+# Monitor most consummming process for a period and output data in graphite, log or json
 
 usage ()
 {
   echo '    -l|--log : log in a file :  default : false' 
+  echo '    -j|--json : output in json :  default : false' 
   echo '    -g|--graphite : export data to graphite :  default : false'
   echo '    -a|--graphiteLocation  : graphiteLocation : default localhost'
   echo '    -f|--preformat : preformat to graphite (default 10sec.dev)'
-  echo '    -n|--nbIteration : nb iteration checking process (default 8640)'
+  echo '    -n|--nbIteration : nb iteration checking process (default 8640:24h00)'
   echo '    -i|--interval : intervall between checks (default 10sec)' 
   exit
 }
@@ -20,15 +20,19 @@ graphiteLocation="localhost" #graphite server adress
 preformat="10sec.dev." #preformationg data for graphite
 nbProcessToMonitor=5 #not dynamic : max process to monitor
 minCpuUsageToMonitor=3 #not dynamic : trigger %cpu to monitor
-nbIteration=8640 #nb iteration checking process
+nbIteration=8640 #nb iteration checking process ( 8640 : 24h00) 
 interval=10 #interval in seconds to ckeck process
 log="False"
+json="False"
 graphite="False"
 
 while [ "$1" != "" ]; do
 case $1 in
         -l|--log )           shift
                        log="True"
+                       ;;
+		-j|--json )           shift
+                       json="True"
                        ;;
         -g|--graphite )           shift
                        graphite="True"
@@ -61,7 +65,9 @@ a=0
 currrent_date_file=$(date +'%Y-%m-%d-%H-%M-%S');
 if [[ $log == "True" ]]; then echo "Writing in the file /tmp/perf_processes_most_consumming_"$currrent_date_file".log"; fi
 
-echo "date|processname|nbprocess|TotalRSSMemory(kb)|TotalSZMemory(kb)|MemoryPerProcess(kb)|totalCPU"
+if [[ $json == "False" ]]; then 
+	echo "date|processname|nbprocess|TotalRSSMemory(kb)|TotalSZMemory(kb)|MemoryPerProcess(kb)|totalCPU";
+fi
 
 while [ $a -lt $nbIteration ]
 do
@@ -98,8 +104,10 @@ do
 
 		currentdate=$(date +'%Y/%m/%d %H:%M:%S');
 	
+		if [[ $json == "False" ]]; then 
+			echo $currentdate"|"$process"|"$nbprocess"|"$totalrss"|"$totalsz"|"$memoryperprocess"|"$totalcpu
+		fi
 		
-		echo $currentdate"|"$process"|"$nbprocess"|"$totalrss"|"$totalsz"|"$memoryperprocess"|"$totalcpu
 		
 		#export to log file
 		if [[ $log == "True" ]]; then echo $currentdate"|"$process"|"$nbprocess"|"$totalrss"|"$totalsz"|"$memoryperprocess"|"$totalcpu >>"/tmp/perf_processes_"$currrent_date_file".log"; fi
@@ -110,6 +118,11 @@ do
 			echo $preformat$HOSTNAME'.processes.memory.'$process'.totalrss' $totalrss $(date +%s) | nc  $graphiteLocation 2003;
 			echo $preformat$HOSTNAME'.processes.nbprocess.'$process $nbprocess $(date +%s) | nc  $graphiteLocation 2003;
 			echo $preformat$HOSTNAME'.processes.cpu.'$process'.totalcpu' $totalcpu $(date +%s) | nc  $graphiteLocation 2003;
+		fi
+
+		#export json
+		if [[ $json == "True" ]] ;  then 
+			echo '{"app_type": "monitor_process","app_process_name":"$process","app_env":"","app_nb_process":"$nbprocess","app_memory_total_rss_kb":"$totalrss","app_memory_total_sz_kb":"$totalsz","app_memory_per_process_kb":"$memoryperprocess","app_cpu":"$totalcpu"}';
 		fi
 
 	done
