@@ -1,6 +1,7 @@
-﻿#!/bin/bash
+﻿#/bin/bash
 # Claude.seguret@laposte.fr
 # Monitor most consummming process for a period and output data in graphite, log or json
+# voir | /proc/1/fd/1 pour sortie docker
 
 usage ()
 {
@@ -11,6 +12,8 @@ usage ()
   echo '    -f|--preformat : preformat to graphite (default 10sec.dev)'
   echo '    -n|--nbIteration : nb iteration checking process (default 8640:24h00)'
   echo '    -i|--interval : intervall between checks (default 10sec)' 
+  echo '    -m|--codemodule : code module (ex default u1)' 
+  echo '    -c|--codeappli : code appli (ex default s7_)' 
   exit
 }
 
@@ -22,9 +25,13 @@ nbProcessToMonitor=5 #not dynamic : max process to monitor
 minCpuUsageToMonitor=3 #not dynamic : trigger %cpu to monitor
 nbIteration=8640 #nb iteration checking process ( 8640 : 24h00) 
 interval=10 #interval in seconds to ckeck process
+
 log="False"
 json="False"
 graphite="False"
+
+codeappli="s7_"
+codemodule="u1"
 
 while [ "$1" != "" ]; do
 case $1 in
@@ -51,6 +58,12 @@ case $1 in
                        ;;
         -i|--interval )           shift
                        interval=$1
+                       ;;
+		-c|--codeappli )           shift
+                       codeappli=$1
+                       ;;
+		-m|--codemodule )           shift
+                       codemodule=$1
                        ;;
         -h|--help )           shift
                        usage
@@ -80,21 +93,35 @@ do
 	do
 
 		totalrss=0
-		#S+, SS :  filter ps and root process
+		#S+, SS :  filter ps and root process for apache : il y a un process root qu'il ne faut pas intégrer
 
 		metric="rss"
-		totalrss=$(ps -A -o pid,$metric,command,stat | grep $process | grep -v "S+" | grep -v "Ss" | awk '{total+=$2}END{printf("%d", total)}')
 
-		totalsz=0
-		nbprocess=0
-		metric="sz"
-		totalsz=$(ps -A -o pid,$metric,command,stat  | grep $process | grep -v grep | grep -v "Ss"  | awk '{total+=$2}END{printf("%d", total)}')
-		nbprocess=$(ps -A -o pid,$metric,command,stat  | grep $process | grep -v grep | grep -v "Ss"  | wc -l )
+		if [[ $process == *"http"* || $process == *"apache"* ]]; then
+	
+			totalrss=$(ps -A -o pid,$metric,command,stat | grep $process | grep -v "S+" | grep -v "Ss" | awk '{total+=$2}END{printf("%d", total)}')
+			totalsz=0
+			nbprocess=0
+			metric="sz"
+			totalsz=$(ps -A -o pid,$metric,command,stat  | grep $process | grep -v grep | grep -v "Ss"  | awk '{total+=$2}END{printf("%d", total)}')
+			nbprocess=$(ps -A -o pid,$metric,command,stat  | grep $process | grep -v grep | grep -v "Ss"  | wc -l )
+
+		else
+			totalrss=$(ps -A -o pid,$metric,command,stat | grep $process |  awk '{total+=$2}END{printf("%d", total)}')
+			totalsz=0
+			nbprocess=0
+			metric="sz"
+			totalsz=$(ps -A -o pid,$metric,command,stat  | grep $process | grep -v grep   | awk '{total+=$2}END{printf("%d", total)}')
+			nbprocess=$(ps -A -o pid,$metric,command,stat  | grep $process | grep -v grep | wc -l )
+		fi
 
 		totalcpu=0
 		metric="%cpu"
 		totalcpu=$(ps -Ao "comm %cpu" --no-headers | grep $process | awk '{a["cpu"] += $2;}END{printf "%0.1f", a["cpu"]}')
 		
+		if [[ $nbprocess -eq 0 ]]; then
+			nbprocess=1
+		fi
 		memoryperprocess=$(( ( $totalsz + $totalrss ) ));
 		if [[ $nbprocess -ne 0 ]]; then
 		      memoryperprocess=$(( $memoryperprocess/$nbprocess ))
@@ -122,12 +149,10 @@ do
 
 		#export json
 		if [[ $json == "True" ]] ;  then 
-			echo '{"app_type": "monitor_process","app_process_name":"$process","app_env":"","app_nb_process":"$nbprocess","app_memory_total_rss_kb":"$totalrss","app_memory_total_sz_kb":"$totalsz","app_memory_per_process_kb":"$memoryperprocess","app_cpu":"$totalcpu"}';
+			echo '{"severity_label":"info","app_ccx":"'$codeappli'","app_host":"'$HOSTNAME'","app_tm":"'$codemodule'","app_type": "monitor_process","app_process_name":"'$process'","app_env":'$APP_ENV',"app_nb_process":"'$nbprocess'","app_memory_total_rss_kb":"'$totalrss'","app_memory_total_sz_kb":"'$totalsz'","app_memory_per_process_kb":"'$memoryperprocess'","app_cpu":"'$totalcpu'"}'  ;
 		fi
-
 	done
 	sleep $interval
 	a=$(($a+1))
 done
-
 
