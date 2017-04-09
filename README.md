@@ -6,12 +6,13 @@ The project aims to send metrics (cpu, mem) of most consuming processes to graph
 
 ## Setup a sample project
 
-    git clone https://github.com/clodio/monitoring_graphite_shell_most_consuming_processes.git
-    cd monitoring_graphite_shell_most_consuming_processes
+    git clone https://github.com/clodio/monitoring_shell_most_consuming_processes.git
+    cd monitoring_shell_most_consuming_processes
+    ./monitoring_shell_most_consuming_processes.sh --json
 
 ## Customize the configuration
 
-Open the file monitoring_graphite_shell_most_consuming_processes.sh and change if needed
+Open the file monitoring_shell_most_consuming_processes.sh and change if needed
 
 ### Change default values
 - graphite server adress : 
